@@ -7,12 +7,50 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+    
+    - name: Run the Docker container
+      run: |
+        # Run container and capture output
+        docker run --rm my-image-name:$(date +%s) > container_output.txt 2>&1
+        
+        # Create result directory
+        mkdir -p result
+        
+        # Move output to result folder with timestamp
+        mv container_output.txt result/output_$(date +%Y%m%d_%H%M%S).txt
+        
+        # Add some metadata
+        echo "Docker run completed at: $(date)" >> result/run_info.txt
+        echo "Branch: ${{ github.ref_name }}" >> result/run_info.txt
+        echo "Commit: ${{ github.sha }}" >> result/run_info.txt
+        echo "Run ID: ${{ github.run_id }}" >> result/run_info.txt
+    
+    - name: Commit and push results
+      run: |
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add the result folder
+        git add result/
+        
+        # Check if there are changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          # Commit the changes
+          git commit -m "Add container execution results from run ${{ github.run_id }}"
+          
+          # Push the changes
+          git push
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
