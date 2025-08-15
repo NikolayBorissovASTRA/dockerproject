@@ -3,28 +3,54 @@ name: Docker Image CI
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'result/**'   # avoid loops when the workflow pushes run_info.txt
   pull_request:
     branches: [ "main" ]
 
 permissions:
   contents: write
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
       IMAGE_TAG: ${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository on the correct ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use PR head branch when event is PR; otherwise use current ref (e.g., refs/heads/main)
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag my-image-name:${IMAGE_TAG}
 
-      - name: Run the Docker container
+      - name: Run the Docker container (capture output, do not fail job)
         run: |
           mkdir -p result
+          set +e
           docker run --rm my-image-name:${IMAGE_TAG} > result/run_info.txt 2>&1
-      
-      - name: Show container output
+          echo $? > result/exit_code.txt
+          set -e
+
+      - name: Show container output if earlier steps failed
         if: ${{ failure() }}
         run: cat result/run_info.txt || echo "No output captured"
+
+      - name: Configure Git author
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push result files (only if changed)
+        run: |
+          git add result/run_info.txt result/exit_code.txt
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "CI: add container output and exit code (run ${{ github.run_id }})"
+            git push
+          fi
