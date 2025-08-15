@@ -1,0 +1,2 @@
+Hello 
+/entrypoint.sh: line 5: can't create : nonexistent directory
