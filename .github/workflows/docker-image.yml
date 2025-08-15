@@ -24,3 +24,7 @@ jobs:
         run: |
           mkdir -p result
           docker run --rm my-image-name:${IMAGE_TAG} > result/run_info.txt 2>&1
+      
+      - name: Show container output
+        if: ${{ failure() }}
+        run: cat result/run_info.txt || echo "No output captured"
